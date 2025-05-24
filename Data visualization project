@@ -1,0 +1,586 @@
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { 
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  ScatterChart, Scatter, ZAxis, AreaChart, Area, ComposedChart
+} from 'recharts';
+import { 
+  ChevronDown, CalendarDays, DollarSign, ShoppingCart, BarChart2, PieChart as PieChartIcon, Filter, Maximize2, Minimize2, RefreshCw,
+  Users, TrendingUp, Target, AlertTriangle, Lightbulb, Settings, Download, Search, Sun, Moon, ArrowRightLeft, Package, Percent
+} from 'lucide-react';
+
+// Enhanced Mock Data Generation
+const generateMockData = (numRecords = 300) => {
+  const data = [];
+  const startDate = new Date();
+  startDate.setFullYear(startDate.getFullYear() - 2); // Data for the last 2 years
+
+  const categories = ['Electronics', 'Software', 'Books', 'Apparel', 'Home & Kitchen', 'Health & Beauty', 'Automotive'];
+  const regions = ['North America', 'Europe', 'Asia-Pacific', 'South America', 'MEA'];
+  const customerSegments = ['SMB', 'Enterprise', 'Consumer', 'Education', 'Government'];
+  const marketingChannels = ['Organic Search', 'Paid Search', 'Social Media', 'Email Marketing', 'Referral'];
+
+  const productDetails = {
+    Electronics: [{name: 'UltraBook Pro', basePrice: 1200}, {name: 'AI SmartCam', basePrice: 300}, {name: 'VR Headset X', basePrice: 450}],
+    Software: [{name: 'DataViz Suite', basePrice: 499}, {name: 'CyberGuard Pro', basePrice: 199}, {name: 'CloudSync SaaS', basePrice: 29}], // per month
+    Books: [{name: 'Advanced ML Theory', basePrice: 79}, {name: 'The Data Alchemist', basePrice: 25}, {name: 'Cybersecurity Today', basePrice: 45}],
+    Apparel: [{name: 'Performance Hoodie', basePrice: 60}, {name: 'Smart Textile Shirt', basePrice: 120}, {name: 'Eco-Friendly Sneakers', basePrice: 90}],
+    'Home & Kitchen': [{name: 'RoboChef 5000', basePrice: 800}, {name: 'Smart Coffee Hub', basePrice: 150}, {name: 'AirPurify Max', basePrice: 250}],
+    'Health & Beauty': [{name: 'Bio-Active Serum', basePrice: 55}, {name: 'Organic Supplement Pack', basePrice: 40}, {name: 'Sonic Toothbrush Elite', basePrice: 90}],
+    Automotive: [{name: 'Dashcam Pro 4K', basePrice: 180}, {name: 'Smart Tire Inflator', basePrice: 70}, {name: 'EV Charger Mini', basePrice: 350}],
+  };
+
+  for (let i = 0; i < numRecords; i++) {
+    const date = new Date(startDate);
+    date.setDate(startDate.getDate() + Math.floor(i * (730 / numRecords))); // Distribute dates over 2 years
+
+    const category = categories[Math.floor(Math.random() * categories.length)];
+    const productInfo = productDetails[category][Math.floor(Math.random() * productDetails[category].length)];
+    const productName = productInfo.name;
+    const pricePerUnit = productInfo.basePrice * (0.8 + Math.random() * 0.4); // +/- 20% variation
+
+    const region = regions[Math.floor(Math.random() * regions.length)];
+    const customerSegment = customerSegments[Math.floor(Math.random() * customerSegments.length)];
+    const marketingChannel = marketingChannels[Math.floor(Math.random() * marketingChannels.length)];
+    
+    const unitsSold = Math.floor(Math.random() * (category === 'Software' ? 200 : 50)) + 1;
+    const revenue = parseFloat((unitsSold * pricePerUnit).toFixed(2));
+    const costOfGoods = parseFloat((revenue * (Math.random() * 0.3 + 0.4)).toFixed(2)); // COGS 40-70% of revenue
+    const marketingSpend = parseFloat((revenue * (Math.random() * 0.05 + 0.05)).toFixed(2)); // Marketing 5-10% of revenue
+    const profit = parseFloat((revenue - costOfGoods - marketingSpend).toFixed(2));
+    const profitMargin = parseFloat(((profit / revenue) * 100).toFixed(2)) || 0;
+
+    data.push({
+      id: `txn_${Date.now()}_${i}`,
+      date: date.toISOString().split('T')[0],
+      category,
+      productName,
+      region,
+      customerSegment,
+      marketingChannel,
+      unitsSold,
+      pricePerUnit: parseFloat(pricePerUnit.toFixed(2)),
+      revenue,
+      costOfGoods,
+      marketingSpend,
+      profit,
+      profitMargin,
+      customerSatisfaction: Math.floor(Math.random() * 3) + 3, // 3 to 5 stars
+      conversionRate: parseFloat((Math.random() * 5 + 1).toFixed(2)), // Simulated 1-6%
+    });
+  }
+  return data.sort((a, b) => new Date(a.date) - new Date(b.date));
+};
+
+const initialRawData = generateMockData();
+const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#22D3EE', '#F472B6'];
+const DARK_MODE_COLORS = ['#5FA8D3', '#60D394', '#FFD449', '#F26A4E', '#A87FFB', '#4FD1E9', '#E784C0'];
+
+const App = () => {
+  const [rawData, setRawData] = useState(initialRawData);
+  const [timeFilter, setTimeFilter] = useState('all');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [regionFilter, setRegionFilter] = useState('all');
+  const [segmentFilter, setSegmentFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [selectedCategoryForDrilldown, setSelectedCategoryForDrilldown] = useState(null);
+  const [tableSortConfig, setTableSortConfig] = useState({ key: 'date', direction: 'descending' });
+
+  const chartColors = isDarkMode ? DARK_MODE_COLORS : COLORS;
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
+
+  const filteredData = useMemo(() => {
+    let data = [...rawData];
+    if (timeFilter === 'custom' && customStartDate && customEndDate) {
+      const start = new Date(customStartDate);
+      const end = new Date(customEndDate);
+      end.setHours(23, 59, 59, 999); // Ensure end date is inclusive
+      data = data.filter(item => {
+        const itemDate = new Date(item.date);
+        return itemDate >= start && itemDate <= end;
+      });
+    } else if (timeFilter !== 'all') {
+      const now = new Date();
+      let pastDate = new Date();
+      if (timeFilter === '7d') pastDate.setDate(now.getDate() - 7);
+      else if (timeFilter === '30d') pastDate.setDate(now.getDate() - 30);
+      else if (timeFilter === '90d') pastDate.setDate(now.getDate() - 90);
+      else if (timeFilter === '1y') pastDate.setFullYear(now.getFullYear() - 1);
+      else if (timeFilter === 'ytd') pastDate = new Date(now.getFullYear(), 0, 1);
+      data = data.filter(item => new Date(item.date) >= pastDate && new Date(item.date) <= now);
+    }
+
+    if (categoryFilter !== 'all') data = data.filter(item => item.category === categoryFilter);
+    if (regionFilter !== 'all') data = data.filter(item => item.region === regionFilter);
+    if (segmentFilter !== 'all') data = data.filter(item => item.customerSegment === segmentFilter);
+    if (searchTerm) {
+      data = data.filter(item =>
+        item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.category.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    return data;
+  }, [rawData, timeFilter, customStartDate, customEndDate, categoryFilter, regionFilter, segmentFilter, searchTerm]);
+
+  const sortedFilteredData = useMemo(() => {
+    let sortableItems = [...filteredData];
+    if (tableSortConfig.key !== null) {
+      sortableItems.sort((a, b) => {
+        if (a[tableSortConfig.key] < b[tableSortConfig.key]) {
+          return tableSortConfig.direction === 'ascending' ? -1 : 1;
+        }
+        if (a[tableSortConfig.key] > b[tableSortConfig.key]) {
+          return tableSortConfig.direction === 'ascending' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [filteredData, tableSortConfig]);
+
+
+  const kpis = useMemo(() => {
+    if (!filteredData.length) return { totalRevenue: 0, totalProfit: 0, avgProfitMargin: 0, totalSales: 0, avgSaleValue: 0, topCategory: 'N/A', avgConversionRate: 0 };
+    const totalRevenue = filteredData.reduce((sum, item) => sum + item.revenue, 0);
+    const totalProfit = filteredData.reduce((sum, item) => sum + item.profit, 0);
+    const totalSales = filteredData.reduce((sum, item) => sum + item.unitsSold, 0);
+    const avgSaleValue = totalRevenue / filteredData.length || 0;
+    const avgProfitMargin = (totalProfit / totalRevenue * 100) || 0;
+    const avgConversionRate = filteredData.reduce((sum, item) => sum + item.conversionRate, 0) / filteredData.length || 0;
+
+    const categoryCounts = filteredData.reduce((acc, item) => {
+      acc[item.category] = (acc[item.category] || 0) + item.revenue;
+      return acc;
+    }, {});
+    const topCategory = Object.keys(categoryCounts).length > 0 ? Object.entries(categoryCounts).sort(([, a], [, b]) => b - a)[0][0] : 'N/A';
+
+    return {
+      totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+      totalProfit: parseFloat(totalProfit.toFixed(2)),
+      avgProfitMargin: parseFloat(avgProfitMargin.toFixed(2)),
+      totalSales,
+      avgSaleValue: parseFloat(avgSaleValue.toFixed(2)),
+      topCategory,
+      avgConversionRate: parseFloat(avgConversionRate.toFixed(2)),
+    };
+  }, [filteredData]);
+
+  // Chart data transformations
+  const salesOverTime = useMemo(() => {
+    const aggregated = filteredData.reduce((acc, item) => {
+      const dateKey = item.date.substring(0, 7); // YYYY-MM
+      if (!acc[dateKey]) acc[dateKey] = { revenue: 0, profit: 0, count: 0 };
+      acc[dateKey].revenue += item.revenue;
+      acc[dateKey].profit += item.profit;
+      acc[dateKey].count++;
+      return acc;
+    }, {});
+    return Object.entries(aggregated)
+      .map(([date, values]) => ({ date, revenue: parseFloat(values.revenue.toFixed(2)), profit: parseFloat(values.profit.toFixed(2)) }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [filteredData]);
+
+  const salesByCategory = useMemo(() => {
+    const aggregated = filteredData.reduce((acc, item) => {
+      if (!acc[item.category]) acc[item.category] = { revenue: 0, profit: 0 };
+      acc[item.category].revenue += item.revenue;
+      acc[item.category].profit += item.profit;
+      return acc;
+    }, {});
+    return Object.entries(aggregated).map(([name, values]) => ({ name, revenue: parseFloat(values.revenue.toFixed(2)), profit: parseFloat(values.profit.toFixed(2)) }));
+  }, [filteredData]);
+  
+  const productsInSelectedCategory = useMemo(() => {
+    if (!selectedCategoryForDrilldown) return [];
+    const categoryData = filteredData.filter(item => item.category === selectedCategoryForDrilldown);
+    const aggregated = categoryData.reduce((acc, item) => {
+        acc[item.productName] = (acc[item.productName] || 0) + item.revenue;
+        return acc;
+    }, {});
+    return Object.entries(aggregated)
+        .map(([name, revenue]) => ({ name, revenue: parseFloat(revenue.toFixed(2)) }))
+        .sort((a,b) => b.revenue - a.revenue) // Sort by revenue desc
+        .slice(0,10); // Top 10 products
+  }, [filteredData, selectedCategoryForDrilldown]);
+
+  const revenueVsMarketingSpend = useMemo(() => {
+    return filteredData.map(item => ({
+      revenue: item.revenue,
+      marketingSpend: item.marketingSpend,
+      profitMargin: item.profitMargin,
+      category: item.category,
+    })).slice(0, 100); // Limit for performance in scatter plot
+  }, [filteredData]);
+  
+  const salesBySegmentAndRegion = useMemo(() => {
+    const aggregated = {};
+    filteredData.forEach(item => {
+        const key = `${item.customerSegment} - ${item.region}`;
+        if (!aggregated[key]) {
+            aggregated[key] = { name: key, segment: item.customerSegment, region: item.region, revenue: 0 };
+        }
+        aggregated[key].revenue += item.revenue;
+    });
+    return Object.values(aggregated);
+  }, [filteredData]);
+
+
+  const uniqueCategories = useMemo(() => ['all', ...new Set(rawData.map(item => item.category))], [rawData]);
+  const uniqueRegions = useMemo(() => ['all', ...new Set(rawData.map(item => item.region))], [rawData]);
+  const uniqueSegments = useMemo(() => ['all', ...new Set(rawData.map(item => item.customerSegment))], [rawData]);
+
+  const handleRefreshData = () => setRawData(generateMockData());
+  const toggleFullScreen = () => { /* ... (same as before) ... */ };
+  useEffect(() => { /* ... (fullscreen listener same as before) ... */ }, []);
+
+  const KpiCard = ({ title, value, icon, unit, color = 'text-blue-500', trend, insight }) => (
+    <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300 flex flex-col justify-between">
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{title}</p>
+          {React.cloneElement(icon, { size: 20, className: `${color} opacity-80` })}
+        </div>
+        <p className="text-2xl font-bold text-gray-800 dark:text-white">
+          {unit === '$' && value.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+          {unit === '%' && `${value.toLocaleString()}%`}
+          {unit !== '$' && unit !== '%' && value.toLocaleString()}
+        </p>
+      </div>
+      {trend && <p className={`text-xs mt-1 ${trend.change > 0 ? 'text-green-500' : 'text-red-500'}`}>{trend.change > 0 ? '▲' : '▼'} {Math.abs(trend.change)}% {trend.period}</p>}
+      {insight && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{insight}</p>}
+    </div>
+  );
+
+  const ChartCard = ({ title, children, icon, subtitle, actions }) => (
+    <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300 flex flex-col">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center">
+          {React.cloneElement(icon, { className: `mr-2 ${isDarkMode ? 'text-sky-400' : 'text-blue-600'}`, size: 20 })}
+          <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200">{title}</h3>
+        </div>
+        {actions && <div className="flex space-x-2">{actions}</div>}
+      </div>
+      {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 ml-7">{subtitle}</p>}
+      <div className="flex-grow h-72 sm:h-80"> {/* Ensure charts have enough space and are consistent */}
+        {children}
+      </div>
+    </div>
+  );
+  
+  const CustomTooltip = ({ active, payload, label, formatter, nameForKey }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-gray-700 dark:bg-gray-900 bg-opacity-90 text-white p-3 rounded-lg shadow-xl border border-gray-600 dark:border-gray-700 text-xs">
+          <p className="label font-semibold mb-1">{`${label}`}</p>
+          {payload.map((entry, index) => (
+            <p key={`item-${index}`} style={{ color: entry.color || entry.fill }} className="capitalize">
+              {`${nameForKey ? entry.payload[nameForKey] : entry.name}: ${formatter ? formatter(entry.value) : entry.value.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}`}
+            </p>
+          ))}
+          {payload[0].payload.profitMargin && <p style={{color: payload[0].color || payload[0].fill}}>Profit Margin: {payload[0].payload.profitMargin.toFixed(1)}%</p>}
+        </div>
+      );
+    }
+    return null;
+  };
+  
+  const handleBarClick = (data) => {
+    if (data && data.activePayload && data.activePayload.length > 0) {
+        const categoryName = data.activePayload[0].payload.name;
+        setSelectedCategoryForDrilldown(categoryName === selectedCategoryForDrilldown ? null : categoryName); // Toggle
+    }
+  };
+
+  const requestSort = (key) => {
+    let direction = 'ascending';
+    if (tableSortConfig.key === key && tableSortConfig.direction === 'ascending') {
+      direction = 'descending';
+    } else if (tableSortConfig.key === key && tableSortConfig.direction === 'descending') {
+        // Optional: third click resets or removes sort for that key
+        // For now, it will just toggle between asc/desc
+        direction = 'ascending'; 
+    }
+    setTableSortConfig({ key, direction });
+  };
+  
+  // Pagination for table
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return sortedFilteredData.slice(startIndex, startIndex + itemsPerPage);
+  }, [sortedFilteredData, currentPage, itemsPerPage]);
+  const totalPages = Math.ceil(sortedFilteredData.length / itemsPerPage);
+
+  // Simulated Key Insights
+  const keyInsights = useMemo(() => {
+    const insights = [];
+    if (!filteredData.length) return ["No data to analyze."];
+
+    if (kpis.avgProfitMargin < 15) insights.push({ text: `Average profit margin is low (${kpis.avgProfitMargin}%) Consider reviewing costs or pricing.`, type: 'warning' });
+    else if (kpis.avgProfitMargin > 30) insights.push({ text: `Strong average profit margin at ${kpis.avgProfitMargin}%. Keep up the good work!`, type: 'positive' });
+
+    const recentData = filteredData.filter(d => new Date(d.date) > new Date(new Date().setDate(new Date().getDate() - 30)));
+    const recentRevenue = recentData.reduce((sum, item) => sum + item.revenue, 0);
+    if (recentRevenue > kpis.totalRevenue * 0.2 && timeFilter !== '30d' && timeFilter !== '7d') insights.push({ text: `Significant revenue (${(recentRevenue / kpis.totalRevenue * 100).toFixed(0)}%) generated in the last 30 days.`, type: 'neutral' });
+
+    if (kpis.topCategory) insights.push({ text: `${kpis.topCategory} is the top performing category by revenue. Explore further opportunities.`, type: 'neutral' });
+    
+    const marketingSpendData = filteredData.filter(d => d.marketingSpend > 0);
+    if (marketingSpendData.length > 0) {
+        const totalMarketingSpend = marketingSpendData.reduce((sum, item) => sum + item.marketingSpend, 0);
+        const roi = (kpis.totalProfit / totalMarketingSpend);
+        if (totalMarketingSpend > 0) insights.push({text: `Marketing ROI is approx. ${roi.toFixed(2)}x.`, type: roi > 3 ? 'positive' : 'neutral'});
+    }
+
+    return insights.slice(0,3); // Max 3 insights
+  }, [kpis, filteredData, timeFilter]);
+
+  return (
+    <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-100'} text-gray-900 dark:text-white p-3 sm:p-5 transition-colors duration-300 font-sans`}>
+      <header className="mb-4 flex flex-col sm:flex-row justify-between items-center">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-white">Senior Data Visualization Hub</h1>
+        <div className="flex items-center space-x-2 mt-3 sm:mt-0">
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg shadow transition-all" title="Toggle Dark/Light Mode">
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+          <button onClick={handleRefreshData} className="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow hover:shadow-md transition-all" title="Refresh Data"><RefreshCw size={20} /></button>
+          <button onClick={toggleFullScreen} className="p-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg shadow hover:shadow-md transition-all" title={isFullScreen ? "Exit Fullscreen" : "Enter Fullscreen"}>{isFullScreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}</button>
+        </div>
+      </header>
+
+      {/* Filters Row 1: Main Time, Category, Region, Segment */}
+      <div className="mb-4 p-3 bg-white dark:bg-gray-800 rounded-xl shadow-md">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
+          {/* Time Filter Select */}
+          <div>
+            <label htmlFor="timeFilter" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Period</label>
+            <select id="timeFilter" value={timeFilter} onChange={e => { setTimeFilter(e.target.value); if (e.target.value !== 'custom') {setCustomStartDate(''); setCustomEndDate('');} }} className="filter-select">
+              <option value="all">All Time</option><option value="ytd">Year to Date</option><option value="1y">Last Year</option>
+              <option value="90d">Last 90 Days</option><option value="30d">Last 30 Days</option><option value="7d">Last 7 Days</option>
+              <option value="custom">Custom Range</option>
+            </select>
+          </div>
+          {/* Custom Date Inputs (conditionally rendered) */}
+          {timeFilter === 'custom' && (
+            <>
+              <div>
+                <label htmlFor="customStartDate" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Start Date</label>
+                <input type="date" id="customStartDate" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)} className="filter-input"/>
+              </div>
+              <div>
+                <label htmlFor="customEndDate" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">End Date</label>
+                <input type="date" id="customEndDate" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)} className="filter-input"/>
+              </div>
+            </>
+          )}
+          {/* Other Filters (adjust grid cols if custom dates are shown) */}
+          <div className={timeFilter === 'custom' ? '' : ''}>
+            <label htmlFor="categoryFilter" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Category</label>
+            <select id="categoryFilter" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="filter-select">
+              {uniqueCategories.map(cat => <option key={cat} value={cat}>{cat === 'all' ? 'All Categories' : cat}</option>)}
+            </select>
+          </div>
+          <div className={timeFilter === 'custom' ? '' : ''}>
+            <label htmlFor="regionFilter" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Region</label>
+            <select id="regionFilter" value={regionFilter} onChange={e => setRegionFilter(e.target.value)} className="filter-select">
+              {uniqueRegions.map(reg => <option key={reg} value={reg}>{reg === 'all' ? 'All Regions' : reg}</option>)}
+            </select>
+          </div>
+          <div className={timeFilter === 'custom' ? 'lg:col-span-1' : 'lg:col-span-1'}> {/* Adjust span if custom dates are shown */}
+            <label htmlFor="segmentFilter" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Segment</label>
+            <select id="segmentFilter" value={segmentFilter} onChange={e => setSegmentFilter(e.target.value)} className="filter-select">
+              {uniqueSegments.map(seg => <option key={seg} value={seg}>{seg === 'all' ? 'All Segments' : seg}</option>)}
+            </select>
+          </div>
+          <div className={timeFilter === 'custom' ? 'lg:col-span-2' : 'lg:col-span-1'}> {/* Search takes remaining space */}
+            <label htmlFor="searchTerm" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Search</label>
+            <div className="relative">
+                <input type="text" id="searchTerm" placeholder="Product or category..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="filter-input pl-8"/>
+                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={16}/>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* KPIs Row */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-4">
+        <KpiCard title="Total Revenue" value={kpis.totalRevenue} unit="$" icon={<DollarSign />} color="text-green-500" insight="Overall sales performance"/>
+        <KpiCard title="Total Profit" value={kpis.totalProfit} unit="$" icon={<TrendingUp />} color="text-emerald-500" insight="Net earnings"/>
+        <KpiCard title="Avg. Profit Margin" value={kpis.avgProfitMargin} unit="%" icon={<Percent />} color="text-teal-500" insight="Efficiency indicator"/>
+        <KpiCard title="Total Sales (Units)" value={kpis.totalSales} icon={<ShoppingCart />} color="text-blue-500" insight="Volume of items sold"/>
+        <KpiCard title="Avg. Sale Value" value={kpis.avgSaleValue} unit="$" icon={<ArrowRightLeft />} color="text-indigo-500" insight="Value per transaction"/>
+        <KpiCard title="Top Category" value={kpis.topCategory} icon={<Package />} color="text-purple-500" insight="Leading product group"/>
+        <KpiCard title="Avg. Conversion" value={kpis.avgConversionRate} unit="%" icon={<Target />} color="text-pink-500" insight="Effectiveness rate"/>
+      </div>
+
+      {/* Main Charting Area & Key Insights */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        {/* Left Column: Main Charts */}
+        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <ChartCard title="Revenue & Profit Over Time" icon={<CalendarDays />} subtitle="Monthly trend analysis">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={salesOverTime} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} className="dark:stroke-gray-700 stroke-gray-300"/>
+                  <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} />
+                  <YAxis yAxisId="left" stroke="#9ca3af" fontSize={10} tickFormatter={(value) => `$${(value/1000).toFixed(0)}k`} />
+                  <YAxis yAxisId="right" orientation="right" stroke={chartColors[1]} fontSize={10} tickFormatter={(value) => `$${(value/1000).toFixed(0)}k`} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{fontSize: "10px"}}/>
+                  <Area yAxisId="left" type="monotone" dataKey="revenue" fill={chartColors[0]} stroke={chartColors[0]} fillOpacity={0.3} name="Revenue" />
+                  <Line yAxisId="right" type="monotone" dataKey="profit" stroke={chartColors[1]} strokeWidth={2} name="Profit" dot={false}/>
+                </ComposedChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title="Sales by Category" icon={<BarChart2 />} subtitle={selectedCategoryForDrilldown ? `Click again to clear ${selectedCategoryForDrilldown}` : "Click a bar to see products"}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={salesByCategory} layout="vertical" margin={{ top: 5, right: 5, left: 5, bottom: 5 }} onClick={handleBarClick}>
+                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} className="dark:stroke-gray-700 stroke-gray-300"/>
+                  <XAxis type="number" stroke="#9ca3af" fontSize={10} tickFormatter={(value) => `$${(value/1000).toFixed(0)}k`} />
+                  <YAxis dataKey="name" type="category" stroke="#9ca3af" width={70} fontSize={10} interval={0} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{fontSize: "10px"}}/>
+                  <Bar dataKey="revenue" name="Revenue" barSize={12} fillOpacity={0.8}>
+                    {salesByCategory.map((entry, index) => ( <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} className="cursor-pointer"/> ))}
+                  </Bar>
+                  <Bar dataKey="profit" name="Profit" barSize={12} fillOpacity={0.6}>
+                    {salesByCategory.map((entry, index) => ( <Cell key={`cell-profit-${index}`} fill={chartColors[(index + 2) % chartColors.length]} className="cursor-pointer"/> ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+            
+            {/* Drilldown Chart or Scatter Plot */}
+            {selectedCategoryForDrilldown ? (
+                <ChartCard title={`Top Products in ${selectedCategoryForDrilldown}`} icon={<Package />} subtitle="Revenue from top products">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={productsInSelectedCategory} layout="vertical" margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
+                            <XAxis type="number" stroke="#9ca3af" fontSize={10} tickFormatter={(value) => `$${(value/1000).toFixed(0)}k`} />
+                            <YAxis dataKey="name" type="category" stroke="#9ca3af" width={90} fontSize={10} interval={0}/>
+                            <Tooltip content={<CustomTooltip />} />
+                            <Bar dataKey="revenue" name="Revenue" fill={chartColors[2]} barSize={15} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </ChartCard>
+            ) : (
+                <ChartCard title="Revenue vs Marketing Spend" icon={<TrendingUp />} subtitle="Correlation analysis (sample data)">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} className="dark:stroke-gray-700 stroke-gray-300"/>
+                      <XAxis type="number" dataKey="marketingSpend" name="Marketing Spend" stroke="#9ca3af" fontSize={10} tickFormatter={(value) => `$${(value/1000).toFixed(0)}k`} />
+                      <YAxis type="number" dataKey="revenue" name="Revenue" stroke="#9ca3af" fontSize={10} tickFormatter={(value) => `$${(value/1000).toFixed(0)}k`} />
+                      <ZAxis dataKey="profitMargin" range={[50, 500]} name="Profit Margin" unit="%"/>
+                      <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip nameForKey="category"/>} />
+                      <Legend wrapperStyle={{fontSize: "10px"}}/>
+                      <Scatter name="Transactions" data={revenueVsMarketingSpend} fillOpacity={0.6}>
+                        {revenueVsMarketingSpend.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={chartColors[uniqueCategories.indexOf(entry.category) % chartColors.length] || chartColors[0]} />
+                        ))}
+                      </Scatter>
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+            )}
+
+            <ChartCard title="Sales by Region & Segment" icon={<PieChartIcon />} subtitle="Market distribution overview">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={salesBySegmentAndRegion} margin={{ top: 5, right: 5, left: -15, bottom: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
+                    <XAxis dataKey="name" stroke="#9ca3af" angle={-35} textAnchor="end" interval={0} fontSize={8} />
+                    <YAxis stroke="#9ca3af" fontSize={10} tickFormatter={(value) => `$${(value/1000).toFixed(0)}k`} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend wrapperStyle={{fontSize: "10px"}}/>
+                    <Bar dataKey="revenue" name="Revenue">
+                        {salesBySegmentAndRegion.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={chartColors[uniqueRegions.indexOf(entry.region) % chartColors.length]} />
+                        ))}
+                    </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+        </div>
+
+        {/* Right Column: Key Insights & Data Table Preview */}
+        <div className="lg:col-span-1 flex flex-col gap-4">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300 flex-grow">
+                <div className="flex items-center mb-3">
+                    <Lightbulb className={`mr-2 ${isDarkMode ? 'text-yellow-300' : 'text-yellow-500'}`} size={20}/>
+                    <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200">Key Insights Engine</h3>
+                </div>
+                <ul className="space-y-2 text-xs">
+                    {keyInsights.length > 0 ? keyInsights.map((insight, index) => (
+                        <li key={index} className={`flex items-start p-2 rounded-md ${
+                            insight.type === 'warning' ? 'bg-red-50 dark:bg-red-900 border-l-4 border-red-500' :
+                            insight.type === 'positive' ? 'bg-green-50 dark:bg-green-900 border-l-4 border-green-500' :
+                            'bg-blue-50 dark:bg-blue-900 border-l-4 border-blue-500'
+                        }`}>
+                            {insight.type === 'warning' && <AlertTriangle size={14} className="mr-2 mt-0.5 text-red-500 flex-shrink-0"/>}
+                            {insight.type === 'positive' && <TrendingUp size={14} className="mr-2 mt-0.5 text-green-500 flex-shrink-0"/>}
+                            {insight.type === 'neutral' && <InfoIcon size={14} className="mr-2 mt-0.5 text-blue-500 flex-shrink-0"/>}
+                            <span className="text-gray-700 dark:text-gray-300">{insight.text}</span>
+                        </li>
+                    )) : <li className="text-gray-500 dark:text-gray-400">No specific insights at the moment.</li>}
+                </ul>
+            </div>
+            {/* Mini Data Table Preview - could be expanded to a full table section */}
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300 flex-grow overflow-hidden">
+                <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-2">Recent Transactions Snippet</h3>
+                <div className="overflow-x-auto text-xs max-h-60"> {/* Max height for snippet */}
+                    <table className="w-full min-w-[400px]">
+                        <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 uppercase">
+                            <tr>
+                                <th className="px-2 py-1.5 text-left">Date</th>
+                                <th className="px-2 py-1.5 text-left">Product</th>
+                                <th className="px-2 py-1.5 text-right">Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {paginatedData.slice(0,5).map(item => ( // Show first 5 for snippet
+                                <tr key={item.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                    <td className="px-2 py-1.5">{item.date}</td>
+                                    <td className="px-2 py-1.5 font-medium text-gray-800 dark:text-white whitespace-nowrap truncate max-w-[100px]">{item.productName}</td>
+                                    <td className="px-2 py-1.5 text-right text-green-600 dark:text-green-400">{item.revenue.toLocaleString(undefined, {style:'currency', currency:'USD'})}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                <button onClick={() => { /* Logic to navigate to full table view or open modal */ }} className="mt-3 text-xs text-blue-500 hover:text-blue-600 dark:text-sky-400 dark:hover:text-sky-300 w-full text-center">View Full Table...</button>
+            </div>
+        </div>
+      </div>
+
+      {/* Full Data Table Section */}
+      <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-xl shadow-lg mt-4">
+        <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-3">Detailed Transaction Log</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-max text-xs text-left text-gray-600 dark:text-gray-400">
+            <thead className="text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-700">
+              <tr>
+                {['date', 'productName', 'category', 'region', 'unitsSold', 'pricePerUnit', 'revenue', 'profit', 'profitMargin'].map(key => (
+                  <th key={key} scope="col" className="px-3 py-2 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600" onClick={() => requestSort(key)}>
+                    {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                    {tableSortConfig.key === key ? (tableSortConfig.direction === 'ascending' ? ' ▲' : ' ▼') : ''}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedData.length > 0 ? paginatedData.map((item) => (
+                <tr key={item.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors">
+                  <td className="px-3 py-1.5">{item.date}</td>
+                  <td className="px-3 py-1.5 font-medium text-gray-800 dark:text-white whitespace-nowrap max-w-[150px] truncate" title={item.productName}>{item.productName}</td>
+                  <td className="px-3 py-1.5">{item.category}</td>
+            
